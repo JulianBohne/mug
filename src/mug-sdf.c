@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
 
     while(!WindowShouldClose()) {
         BeginDrawing();
-            float aspectRatio = (float)GetRenderHeight() / GetRenderWidth();
+            float aspectRatio = (float)GetRenderWidth() / GetRenderHeight();
             float time = (float)GetTime();
             BeginShaderMode(sdf_shader);
                 SetShaderValue(sdf_shader, aspectRatioLoc, &aspectRatio, SHADER_UNIFORM_FLOAT);

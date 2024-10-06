@@ -9,8 +9,8 @@
 in vec2 fragTexCoord;
 in vec4 fragColor;
 
-uniform float aspectRatio; // height / width
-uniform float fov = 100.0; // horizontal
+uniform float aspectRatio; // width / height
+uniform float fov = 100.0; // vertical
 
 uniform float time = 0.0; // time in seconds
 
@@ -272,7 +272,7 @@ void main() {
         (cos(time * 0.23) - 1.5)
     )) * (1.0 + sin(time + 7.52) + 2.0) + vec3(0., 0., 4.5);
 
-    vec2 coord = ((fragTexCoord*2) - 1) * vec2(1.0, -aspectRatio);
+    vec2 coord = ((fragTexCoord*2) - 1) * vec2(aspectRatio, -1.0);
 
     float screenDist = atan(PI * fov / 180.0);
 
