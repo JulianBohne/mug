@@ -140,7 +140,7 @@ HitInfo scene(vec3 pos) {
     return or(
         smooth_or(
             sphere(pos, spherePos, 1.0, sphereMat1),
-            sphere(pos, vec3(cos(time * 0.9124) * 2, sin(time) * 2, 5.0), 1.0, sphereMat2),
+            sphere(pos, vec3(cos(time * 0.9124) * 2.5, sin(time) * 2.5, 5.0), 1.0, sphereMat2),
             0.35
         ),
         plane(pos, vec3(0., -3.0, 0.), vec3(0., 1., 0.), mattWhite)
@@ -176,13 +176,13 @@ struct TraceStackItem {
 
 TraceStackItem traceStack[MAX_DEPTH];
 
-vec3 trace(vec3 rayDir) {
+vec3 trace(vec3 cameraRayDir) {
 
     int depth = 0;
 
     traceStack[0] = TraceStackItem(
         vec3(0.0), // ray starting position
-        rayDir,    // ray direction
+        cameraRayDir,    // ray direction
         0.0,       // ray direction randomness
         1,         // rays remaining
         vec3(0.0) // accumulated light contribution (color)
@@ -198,6 +198,10 @@ vec3 trace(vec3 rayDir) {
 
         if (traceStack[depth].raysRemaining <= 0) {
             // Accumulate colors further down
+            if (depth > 0) {
+                traceStack[depth - 1].accLight += traceStack[depth].accLight;
+                // traceStack[depth - 1].accLight = vec3(0.0, 1.0, 0.0);
+            }
             --depth;
             continue;
         }
@@ -206,16 +210,10 @@ vec3 trace(vec3 rayDir) {
         vec3 pos = traceStack[depth].startPos;
         vec3 dir = normalize(traceStack[depth].rayDir + rand3(rayIndex++) * traceStack[depth].randomness);
         
-        // TODO: Remove (this is just here because I don't acrually want to recurse further)
-        if (depth == 1) {
-            continue;
-        }
-
-
         i = 0;
         do {
             hit = scene(pos);
-            pos += rayDir * hit.dist;
+            pos += dir * hit.dist;
             ++i;
         } while (hit.dist > EPSILON && i < MAX_STEPS);
 
@@ -241,11 +239,11 @@ vec3 trace(vec3 rayDir) {
 
             if (depth < MAX_DEPTH - 1) {
                 traceStack[++depth] = TraceStackItem(
-                    pos,                         // ray starting position
-                    reflect(rayDir, hit.normal), // ray direction
-                    0.0,                         // ray direction randomness
-                    1,                           // rays remaining
-                    vec3(0.0)                    // accumulated light contribution (color)
+                    pos,                      // ray starting position
+                    reflect(dir, hit.normal), // ray direction
+                    0.0,                      // ray direction randomness
+                    1,                        // rays remaining
+                    vec3(0.0)                 // accumulated light contribution (color)
                 );
             }
         }
