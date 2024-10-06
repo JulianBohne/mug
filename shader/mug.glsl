@@ -3,7 +3,7 @@
 #define PI 3.1415926
 #define EPSILON 0.001
 #define MAX_STEPS 100
-#define MAX_DEPTH 3
+#define MAX_DEPTH 2
 
 // Input vertex attributes (from vertex shader)
 in vec2 fragTexCoord;
@@ -107,13 +107,12 @@ HitInfo lerpHit(HitInfo a, HitInfo b, float t) {
             mix(a.mat.roughness, b.mat.roughness, t)
         ),
         normalize(mix(a.normal, b.normal, t)),
-        mix(a.dist, b.dist, t)
+        isinf(a.dist) || isinf(b.dist) ? a.dist : mix(a.dist, b.dist, t) 
     );
 }
 
 HitInfo or(HitInfo a, HitInfo b) {
-    float t = a.dist < b.dist ? 0.0 : 1.0;
-    return lerpHit(a, b, t);
+    return a.dist <= b.dist ? a : b;
 }
 
 // quadratic polynomial - https://iquilezles.org/articles/smin/
@@ -203,14 +202,15 @@ vec3 trace(vec3 rayDir) {
             continue;
         }
 
-        // TODO: Remove (this is just here because I don't acrually want to recurse further)
-        if (depth == 1) {
-            return vec3(0.0, 1.0, 0.0);
-        }
-
         --traceStack[depth].raysRemaining;
         vec3 pos = traceStack[depth].startPos;
-        vec3 dir = traceStack[depth].rayDir; // + rand3(rayIndex++) * traceStack[depth].randomness;
+        vec3 dir = normalize(traceStack[depth].rayDir + rand3(rayIndex++) * traceStack[depth].randomness);
+        
+        // TODO: Remove (this is just here because I don't acrually want to recurse further)
+        if (depth == 1) {
+            continue;
+        }
+
 
         i = 0;
         do {
@@ -221,7 +221,7 @@ vec3 trace(vec3 rayDir) {
 
 
         if (i == MAX_STEPS) {
-            --depth;
+            continue;
         } else {
             // Lift hit off of surface
             pos += hit.normal * EPSILON * 2;
@@ -244,7 +244,7 @@ vec3 trace(vec3 rayDir) {
                     pos,                         // ray starting position
                     reflect(rayDir, hit.normal), // ray direction
                     0.0,                         // ray direction randomness
-                    0,                           // rays remaining
+                    1,                           // rays remaining
                     vec3(0.0)                    // accumulated light contribution (color)
                 );
             }
@@ -282,6 +282,7 @@ void main() {
 
     vec3 pxColor = trace(rayDir);
 
-    finalColor = vec4(tanh(pxColor), 1.0);
+    // Doing a little bit of a color transform to keep it between zero and 1 without hard clipping, but not getting too dark
+    finalColor = vec4(pow(tanh(pxColor), vec3(0.75)), 1.0);
 
 }
