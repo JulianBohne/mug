@@ -2,7 +2,8 @@
 
 #define PI 3.1415926
 #define EPSILON 0.001
-#define MAX_STEPS 25
+#define MAX_STEPS 100
+#define MAX_DEPTH 3
 
 // Input vertex attributes (from vertex shader)
 in vec2 fragTexCoord;
@@ -15,6 +16,19 @@ uniform float time = 0.0; // time in seconds
 
 // Output fragment color
 out vec4 finalColor;
+
+float random(vec2 st) {
+    return fract(sin(dot(st.xy,
+                         vec2(12.9898,78.233)))*
+        43758.5453123);
+}
+
+vec3 rand3 (float seed) {
+    return vec3(
+        random(fragTexCoord + vec2(fract(time / 10.0) * 10.0 + 0.328, seed)), 
+        random(fragTexCoord + vec2(fract(time / 12.0) * 12.0 + 1.203, seed)), 
+        random(fragTexCoord + vec2(fract(time / 15.0) * 15.0 + 2.234, seed)));
+}
 
 struct Material {
     vec4 color;
@@ -32,6 +46,14 @@ HitInfo sphere(vec3 pos, vec3 spherePos, float radius, Material mat) {
         mat,
         normalize(pos - spherePos),
         length(spherePos - pos) - radius
+    );
+}
+
+HitInfo plane(vec3 pos, vec3 planePos, vec3 planeNormal, Material mat) {
+    return HitInfo(
+        mat,
+        planeNormal,
+        dot(pos - planePos, planeNormal)
     );
 }
 
@@ -68,6 +90,11 @@ const Material sphereMat1 = Material(
 const Material sphereMat2 = Material(
     vec4(0.5, 0.0, 1.0, 1.0), // color
     0.0 // roughness
+);
+
+const Material mattWhite = Material(
+    vec4(1.0, 1.0, 1.0, 1.0), // color
+    1.0 // roughness
 );
 
 const vec3 spherePos = vec3(0.0, 0.0, 5.0);
@@ -111,10 +138,13 @@ HitInfo smooth_or(HitInfo a, HitInfo b, float k) {
 }
 
 HitInfo scene(vec3 pos) {
-    return smooth_or(
-        sphere(pos, spherePos, 1.0, sphereMat1),
-        sphere(pos, vec3(cos(time * 0.9124) * 2, sin(time) * 2, 5.0), 1.0, sphereMat2),
-        0.35
+    return or(
+        smooth_or(
+            sphere(pos, spherePos, 1.0, sphereMat1),
+            sphere(pos, vec3(cos(time * 0.9124) * 2, sin(time) * 2, 5.0), 1.0, sphereMat2),
+            0.35
+        ),
+        plane(pos, vec3(0., -3.0, 0.), vec3(0., 1., 0.), mattWhite)
     );
 }
 
@@ -135,39 +165,93 @@ vec3 shadowRay(vec3 pos, Light light) {
     // This will bleed light, but whatever
     return light.color * pow(length(light.position - startPos), -light.falloffExponent);
     // return vec3(1.0, 0.0, 1.0); // Too many steps to light :/
-} 
+}
 
-vec3 trace(vec3 pos, vec3 rayDir) {
+struct TraceStackItem {
+    vec3 startPos;
+    vec3 rayDir;
+    float randomness;
+    int raysRemaining;
+    vec3 accLight;
+};
+
+TraceStackItem traceStack[MAX_DEPTH];
+
+vec3 trace(vec3 rayDir) {
+
+    int depth = 0;
+
+    traceStack[0] = TraceStackItem(
+        vec3(0.0), // ray starting position
+        rayDir,    // ray direction
+        0.0,       // ray direction randomness
+        1,         // rays remaining
+        vec3(0.0) // accumulated light contribution (color)
+    );
 
     HitInfo hit;
 
-    for (int i = 0; i < MAX_STEPS; ++i) {
-        hit = scene(pos);
-        if (hit.dist < EPSILON) {
-            vec3 incomingLight = vec3(0);
+    int i;
 
-            vec3 offsetHitPosition = pos + hit.normal * EPSILON * 2;
+    float rayIndex = 0.0;
 
-            vec3 lightColorR = shadowRay(offsetHitPosition, sceneLightR);
-            vec3 lightDirR = normalize(sceneLightR.position - pos);
-            incomingLight += max(dot(lightDirR, hit.normal), 0) * lightColorR;
-            
-            vec3 lightColorG = shadowRay(offsetHitPosition, sceneLightG);
-            vec3 lightDirG = normalize(sceneLightG.position - pos);
-            incomingLight += max(dot(lightDirG, hit.normal), 0) * lightColorG;
-            
-            vec3 lightColorB = shadowRay(offsetHitPosition, sceneLightB);
-            vec3 lightDirB = normalize(sceneLightB.position - pos);
-            incomingLight += max(dot(lightDirB, hit.normal), 0) * lightColorB;
+    while(depth >= 0) {
 
-            // Handle bounces :D
-
-            return incomingLight * hit.mat.color.xyz;
+        if (traceStack[depth].raysRemaining <= 0) {
+            // Accumulate colors further down
+            --depth;
+            continue;
         }
-        pos += rayDir * hit.dist;
+
+        // TODO: Remove (this is just here because I don't acrually want to recurse further)
+        if (depth == 1) {
+            return vec3(0.0, 1.0, 0.0);
+        }
+
+        --traceStack[depth].raysRemaining;
+        vec3 pos = traceStack[depth].startPos;
+        vec3 dir = traceStack[depth].rayDir; // + rand3(rayIndex++) * traceStack[depth].randomness;
+
+        i = 0;
+        do {
+            hit = scene(pos);
+            pos += rayDir * hit.dist;
+            ++i;
+        } while (hit.dist > EPSILON && i < MAX_STEPS);
+
+
+        if (i == MAX_STEPS) {
+            --depth;
+        } else {
+            // Lift hit off of surface
+            pos += hit.normal * EPSILON * 2;
+
+            // TODO: Refactor lights
+            vec3 lightColorR = shadowRay(pos, sceneLightR);
+            vec3 lightDirR = normalize(sceneLightR.position - pos);
+            traceStack[depth].accLight += max(dot(lightDirR, hit.normal), 0) * lightColorR * hit.mat.color.xyz;
+
+            vec3 lightColorG = shadowRay(pos, sceneLightG);
+            vec3 lightDirG = normalize(sceneLightG.position - pos);
+            traceStack[depth].accLight += max(dot(lightDirG, hit.normal), 0) * lightColorG * hit.mat.color.xyz;
+            
+            vec3 lightColorB = shadowRay(pos, sceneLightB);
+            vec3 lightDirB = normalize(sceneLightB.position - pos);
+            traceStack[depth].accLight += max(dot(lightDirB, hit.normal), 0) * lightColorB * hit.mat.color.xyz;
+
+            if (depth < MAX_DEPTH - 1) {
+                traceStack[++depth] = TraceStackItem(
+                    pos,                         // ray starting position
+                    reflect(rayDir, hit.normal), // ray direction
+                    0.0,                         // ray direction randomness
+                    0,                           // rays remaining
+                    vec3(0.0)                    // accumulated light contribution (color)
+                );
+            }
+        }
     }
 
-    return vec3(0);
+    return traceStack[0].accLight;
 }
 
 void main() {
@@ -196,7 +280,8 @@ void main() {
 
     vec3 rayDir = normalize(vec3(coord, screenDist));
 
-    vec3 pxColor = trace(vec3(0.0), rayDir);
+    vec3 pxColor = trace(rayDir);
 
     finalColor = vec4(tanh(pxColor), 1.0);
+
 }

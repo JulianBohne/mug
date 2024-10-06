@@ -16,7 +16,8 @@ int main(int argc, char** argv) {
 
     printf("Aspect ratio shader-loc: %d\n", aspectRatioLoc);
 
-    SetTargetFPS(60);
+    // Currently wanna see how fast it actually runs
+    // SetTargetFPS(60);
 
     // Set default internal texture (1px white) and rectangle to be used for shapes drawing
     Texture2D defaultTexture = {
@@ -37,6 +38,7 @@ int main(int argc, char** argv) {
                 SetShaderValue(sdf_shader, timeLoc, &time, SHADER_UNIFORM_FLOAT);
                 DrawRectangle(0, 0, GetRenderWidth(), GetRenderHeight(), WHITE);
             EndShaderMode();
+            DrawFPS(20, 20);
         EndDrawing();
     }
 
